@@ -1,5 +1,5 @@
 {
-  description = "srid/haskell-template: Nix template for Haskell projects";
+  description = "zhujinxuan/org-with-f: Nix template for Haskell projects";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     systems.url = "github:nix-systems/default";
@@ -29,7 +29,7 @@
             root = ./.;
             fileset = lib.fileset.unions [
               ./src
-              ./haskell-template.cabal
+              ./org-with-f.cabal
               ./LICENSE
               ./README.md
             ];
@@ -42,28 +42,24 @@
           packages = {
             # Add source or Hackage overrides here
             # (Local packages are added automatically)
-            /*
-            aeson.source = "1.5.0.0" # Hackage version
-            shower.source = inputs.shower; # Flake input
+            /* aeson.source = "1.5.0.0" # Hackage version
+               shower.source = inputs.shower; # Flake input
             */
           };
 
           # Add your package overrides here
           settings = {
-            /*
-            haskell-template = {
-              haddock = false;
-            };
-            aeson = {
-              check = false;
-            };
+            /* haskell-template = {
+                 haddock = false;
+               };
+               aeson = {
+                 check = false;
+               };
             */
           };
 
           # Development shell configuration
-          devShell = {
-            hlsCheck.enable = false;
-          };
+          devShell = { hlsCheck.enable = false; };
 
           # What should haskell-flake add to flake outputs?
           autoWire = [ "packages" "apps" "checks" ]; # Wire all but the devShell
@@ -96,21 +92,19 @@
         };
 
         # Default package & app.
-        packages.default = self'.packages.haskell-template;
-        apps.default = self'.apps.haskell-template;
+        packages.default = self'.packages.org-with-f;
+        apps.default = self'.apps.org-with-f;
 
         # Default shell.
         devShells.default = pkgs.mkShell {
-          name = "haskell-template";
+          name = "org-with-f";
           meta.description = "Haskell development environment";
           # See https://community.flake.parts/haskell-flake/devshell#composing-devshells
           inputsFrom = [
             config.haskellProjects.default.outputs.devShell
             config.treefmt.build.devShell
           ];
-          packages = with pkgs; [
-            just
-          ];
+          packages = with pkgs; [ just ];
         };
       };
     };
