@@ -1,34 +1,30 @@
-{-# LANGUAGE DeriveAnyClass, GeneralizedNewtypeDeriving #-}
-
+{-# LANGUAGE QuantifiedConstraints #-}
 module Org.Types where
-import Data.Text (Text)
-import Data.Typeable (Typeable)
-import GHC.Generics
 
-data DocumentF (f :: * -> * ) (a :: *)
-  = DocEOFF (EOFF f)
-  | DocHeadingF (f (HeadingF f)) a
-  | DocParagraphF (f (ParagraphF f)) a
-  | DocBlockF (f (BlockF f)) a
-  deriving (Show, Eq, Typeable, Generic)
+import GHC.Generics ()
+import Data.Functor.Classes (Eq1, eq1)
 
-newtype HeadingF f =
-  HeadingF {
-  level:: f Int,
-  text :: f Text
-                            }
-  deriving (Show, Eq, Typeable, Generic)
+data DocumentF f a
+  = DocHeadingF !(f (HeadingF f)) a
+  | DocParagraphF !(f (ParagraphF f)) a
+  | DocEmptyLineF !(f ()) a
+  deriving stock (Typeable, Generic)
 
-newtype ParagraphF f  = PF Text
-  deriving (Show, Eq)
+instance (Eq1 f, Eq a) => Eq (DocumentF f a) where
+  (DocHeadingF x a) == (DocHeadingF y b) = eq1 x y && a == b
+  (DocParagraphF x a) == (DocParagraphF y b) = eq1 x y && a == b
+  (DocEmptyLineF x a) == (DocEmptyLineF y b) = eq1 x y && a == b
+  _ == _ = False
 
 
-newtype BlockF f  = BlockF Text
-  deriving (Show, Eq)
+data HeadingF f = HeadingF
+  deriving stock (Eq, Show, Typeable, Generic)
+
+data ParagraphF f = ParagraphF
+  deriving stock (Eq, Show, Typeable, Generic)
 
 
-newtype Drawer f  = Drawer Text
-  deriving (Show, Eq)
+data Drawer f = Drawer
+  deriving stock (Eq, Show, Typeable, Generic)
 
-newtype EOFF f  = EOFF (f ())
-  deriving (Show, Eq)
+newtype Token f = Token Text deriving stock (Eq, Show, Typeable, Generic)
