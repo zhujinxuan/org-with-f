@@ -1,5 +1,10 @@
 {-# LANGUAGE StrictData #-}
-module Orgmode.Parser.Pass0 (BlockPass0 (..), nextBlock) where
+
+module Orgmode.Parser.Pass0
+  ( BlockPass0 (..),
+    nextBlock,
+  )
+where
 
 import Data.Aeson (ToJSON, (.=))
 import Data.Aeson qualified as Aeson
@@ -11,11 +16,14 @@ import Orgmode.Internal.Types
   )
 import Orgmode.Parser.Internal
   ( BParser,
+    parseIndent,
     skipEmptyLine,
+    skipIndent,
     skipToEndOfLine,
   )
 import Text.Megaparsec qualified as MP
 import Text.Megaparsec.Char qualified as MC
+import qualified Text.Megaparsec.Char.Lexer as Lexer
 
 {- BlockPass0 only keep the position infomation of blocks -}
 data BlockPass0 a = BlockPass0
@@ -46,10 +54,16 @@ blockPassConvert _ (BlockPass0 x y) = BlockPass0 x y
 instance Eq1 BlockPass0 where
   liftEq _ = (==) . blockPassConvert Proxy
 
-
 -- | When a paragraph (or similar block) parsing is finished,
 --    the type of new block might be implied by how the old block is finished |
-data BlockStartMark = HeadingStart | EmptyLineFull | EOFEnd | ListItemStart Indent | ParagraphStart Indent | UnknownStart deriving stock (Eq, Show, Generic, Typeable)
+data BlockStartMark
+  = HeadingStart
+  | EmptyLineFull
+  | EOFEnd
+  | ListItemStart MP.Pos
+  | ParagraphStart MP.Pos
+  | UnknownStart
+  deriving stock (Eq, Show, Generic, Typeable)
 
 -- | We can certainly know a new block has started by
 --    - End of file
@@ -63,14 +77,8 @@ blockStart =
       [ MP.eof $> EOFEnd,
         MC.char '*' $> HeadingStart,
         skipEmptyLine $> EmptyLineFull,
-        (ListItemStart . Indent . length . take 100 <$> MP.many MC.hspace)
-          <* MP.choice
-            [ MC.char '-',
-              MC.char '+',
-              MC.char '*',
-              MC.lowerChar *> MC.char '.',
-              MP.skipSome MC.digitChar *> MC.char '.'
-            ]
+        (ListItemStart <$> parseIndent)
+          <* _listStart
       ]
   where
     _wrap x = do
@@ -85,20 +93,30 @@ _unknownHelper py = do
   pos <- MP.getSourcePos
   return (y, UnknownStart, BlockPass0 pos pos)
 
--- | Given a block token is already parsed, we can parse the following blocks |
+-- | Start of List after indent
+_listStart :: BParser Char
+_listStart =
+  MP.choice
+    [ MC.char '-',
+      MC.char '+',
+      MC.char '*',
+      MC.lowerChar *> MC.char '.',
+      MP.skipSome MC.digitChar *> MC.char '.'
+    ]
+
+-- | Given a block token is already parsed, we can parse the following blocks
 nextBlock :: BlockStartMark -> BlockPass0 BlockStartMark -> BParser (a -> OrgDocumentF BlockPass0 a, BlockStartMark, BlockPass0 BlockStartMark)
 nextBlock EOFEnd pos = _unknownHelper $ return $ const $ OrgDocEOFF (blockPassConvert Proxy pos)
 nextBlock EmptyLineFull pos = _unknownHelper $ return $ OrgDocEmptyLineF (blockPassConvert Proxy pos)
 nextBlock HeadingStart pos = _unknownHelper $ OrgDocHeadingF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.getSourcePos)
 nextBlock (ListItemStart x) pos = _unknownHelper $ do
   skipToEndOfLine
-  MP.skipMany (MP.try  _list)
-  OrgDocListItemF . BlockPass0 (posStart pos)  <$> MP.getSourcePos
+  MP.skipMany (MP.try _list)
+  OrgDocListItemF . BlockPass0 (posStart pos) <$> MP.getSourcePos
   where
-    _list = MP.skipCount (unIndent x) MC.hspace *> MC.hspace1 *> notListStart *> skipToEndOfLine
-    notListStart = MP.notFollowedBy $ MP.eitherP (MP.some MC.numberChar <* MC.char '.') (MC.char '-')
+    _list = skipIndent x *> MC.hspace1 *> MP.notFollowedBy _listStart *> skipToEndOfLine
 nextBlock (ParagraphStart x) _ = do
-  (a, y, z) <- _innerParagraph (MP.skipCount (unIndent x) MC.hspace *> MP.notFollowedBy MC.space *> skipToEndOfLine) blockStart
+  (a, y, z) <- _innerParagraph (skipIndent x *> MP.notFollowedBy MC.space *> skipToEndOfLine) blockStart
   return (OrgDocParagraphF a, y, z)
 nextBlock UnknownStart pos = do
   start <- MP.optional blockStart
@@ -108,8 +126,9 @@ nextBlock UnknownStart pos = do
       x <- _takeIndent
       nextBlock (ParagraphStart x) pos
 
-_takeIndent :: BParser Indent
-_takeIndent = Indent . length . take 100 <$> MP.many MC.hspace
+-- | Consume indent
+_takeIndent :: BParser MP.Pos
+_takeIndent = MC.hspace *> Lexer.indentLevel
 
 -- | Parse parargrph helper function |
 _innerParagraph :: BParser x -> BParser (end, BlockPass0 end) -> BParser (BlockPass0 (ParagraphF BlockPass0), end, BlockPass0 end)

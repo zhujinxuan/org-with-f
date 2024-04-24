@@ -74,16 +74,6 @@ common shared
     TypeOperators
     ViewPatterns
 
-  build-depends:
-    , aeson
-    , base          >=4   && <5
-    , relude        >=1.0
-    , megaparsec
-    , data-fix >=0.3.0 && <0.4
-    , deriving-compat
-
-  hs-source-dirs:     src
-  default-language:   Haskell2010
 
 library
   import:  shared
@@ -92,3 +82,26 @@ library
     Orgmode.Parser.Pass0
     Orgmode.Parser.Internal
   hs-source-dirs: src
+  build-depends:
+    , aeson
+    , base          >=4   && <5
+    , relude        >=1.0
+    , megaparsec
+    , data-fix >=0.3.0 && <0.4
+  default-language:   Haskell2010
+
+test-suite test-parse
+  import:  shared
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  hs-source-dirs: test/
+  build-depends:
+    , tasty
+    , tasty-golden
+    , aeson
+    , base          >=4   && <5
+    , relude        >=1.0
+    , megaparsec
+    , data-fix >=0.3.0 && <0.4
+    , org-with-f
+  ghc-options: -threaded -Wall

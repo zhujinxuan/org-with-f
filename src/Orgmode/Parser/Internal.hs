@@ -1,10 +1,11 @@
+{-# LANGUAGE StrictData #-}
+
 module Orgmode.Parser.Internal
   ( BParser,
     OrgConfig (..),
     OrgErr (..),
     skipEmptyLine,
     skipToEndOfLine,
-    Indent (..),
     skipIndent,
     parseIndent,
   )
@@ -18,8 +19,8 @@ import Text.Megaparsec.Char.Lexer (charLiteral)
 type BParser a = MP.ParsecT OrgErr Text (Reader OrgConfig) a
 
 data OrgConfig = OrgConfig
-  { orgTodoKeywords1 :: ![Text],
-    orgElements :: ![Text]
+  { orgTodoKeywords1 :: [Text],
+    orgElements :: [Text]
   }
   deriving stock (Eq, Show, Generic, Typeable)
 
@@ -31,14 +32,13 @@ skipEmptyLine = MC.hspace *> MP.eitherP MC.eol MP.eof $> ()
 skipToEndOfLine :: BParser ()
 skipToEndOfLine = MP.manyTill charLiteral (MP.eitherP MC.eol MP.eof) $> ()
 
-newtype Indent = Indent {unIndent :: Int} deriving newtype (Show, Eq, Typeable)
 
 -- | Is it a horizontal space character?
 isHSpace :: Char -> Bool
 isHSpace x = isSpace x && x /= '\n' && x /= '\r'
 
-skipIndent :: Indent -> BParser ()
-skipIndent (Indent x) = MP.skipCount x (MP.satisfy isHSpace) *> MP.notFollowedBy MC.space1
+skipIndent :: MP.Pos -> BParser ()
+skipIndent x = MP.skipCount (MP.unPos x) (MP.satisfy isHSpace) *> MP.notFollowedBy MC.space1
 
-parseIndent :: BParser Indent
-parseIndent = Indent . length . take 100 <$> MP.many (MP.satisfy isHSpace)
+parseIndent :: BParser MP.Pos
+parseIndent = MP.mkPos . length . take 100 <$> MP.many (MP.satisfy isHSpace)
