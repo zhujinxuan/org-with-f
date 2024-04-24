@@ -54,7 +54,7 @@ blockStart =
       [ MP.eof $> EOFEnd,
         MC.char '*' $> HeadingStart,
         skipEmptyLine $> EmptyLineFull,
-        (ListItemStart . length <$> MP.many MC.hspace)
+        (ListItemStart . length . take 100 <$> MP.many MC.hspace)
           <* MP.choice
             [ MC.char '-',
               MC.char '+',
