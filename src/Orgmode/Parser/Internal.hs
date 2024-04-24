@@ -1,5 +1,16 @@
-module Orgmode.Parser.Internal (BParser, OrgConfig (..), OrgErr (..), skipEmptyLine, skipToEndOfLine) where
+module Orgmode.Parser.Internal
+  ( BParser,
+    OrgConfig (..),
+    OrgErr (..),
+    skipEmptyLine,
+    skipToEndOfLine,
+    Indent (..),
+    skipIndent,
+    parseIndent,
+  )
+where
 
+import Data.Char (isSpace)
 import Text.Megaparsec qualified as MP
 import Text.Megaparsec.Char qualified as MC
 import Text.Megaparsec.Char.Lexer (charLiteral)
@@ -15,7 +26,19 @@ data OrgConfig = OrgConfig
 data OrgErr = OrgErr deriving stock (Eq, Ord, Show, Generic, Typeable)
 
 skipEmptyLine :: BParser ()
-skipEmptyLine = MP.manyTill MC.hspace (MP.eitherP MC.eol MP.eof) $> ()
+skipEmptyLine = MC.hspace *> MP.eitherP MC.eol MP.eof $> ()
 
 skipToEndOfLine :: BParser ()
 skipToEndOfLine = MP.manyTill charLiteral (MP.eitherP MC.eol MP.eof) $> ()
+
+newtype Indent = Indent {unIndent :: Int} deriving newtype (Show, Eq, Typeable)
+
+-- | Is it a horizontal space character?
+isHSpace :: Char -> Bool
+isHSpace x = isSpace x && x /= '\n' && x /= '\r'
+
+skipIndent :: Indent -> BParser ()
+skipIndent (Indent x) = MP.skipCount x (MP.satisfy isHSpace) *> MP.notFollowedBy MC.space1
+
+parseIndent :: BParser Indent
+parseIndent = Indent . length . take 100 <$> MP.many (MP.satisfy isHSpace)

@@ -1,3 +1,4 @@
+{-# LANGUAGE StrictData #-}
 module Orgmode.Parser.Pass0 (BlockPass0 (..), nextBlock) where
 
 import Data.Aeson (ToJSON, (.=))
@@ -18,18 +19,25 @@ import Text.Megaparsec.Char qualified as MC
 
 {- BlockPass0 only keep the position infomation of blocks -}
 data BlockPass0 a = BlockPass0
-  { posStart :: !MP.SourcePos,
-    posEnd :: !MP.SourcePos
+  { posStart :: MP.SourcePos,
+    posEnd :: MP.SourcePos
   }
   deriving stock (Eq, Show, Generic, Typeable)
 
 instance (BlockName a) => ToJSON (BlockPass0 a) where
   toJSON x =
     Aeson.object
-      [ "posStart" .= posStart x,
-        "posEnd" .= posEnd x,
+      [ "posStart" .= _posObject (posStart x),
+        "posEnd" .= _posObject (posEnd x),
         "blockName" .= blockName (Proxy :: Proxy a)
       ]
+
+_posObject :: MP.SourcePos -> Aeson.Value
+_posObject x =
+  Aeson.object
+    [ "line" .= MP.unPos (MP.sourceLine x),
+      "column" .= MP.unPos (MP.sourceColumn x)
+    ]
 
 {- Convert BlockPass0 -}
 blockPassConvert :: Proxy y -> BlockPass0 a -> BlockPass0 y
@@ -38,9 +46,10 @@ blockPassConvert _ (BlockPass0 x y) = BlockPass0 x y
 instance Eq1 BlockPass0 where
   liftEq _ = (==) . blockPassConvert Proxy
 
+
 -- | When a paragraph (or similar block) parsing is finished,
 --    the type of new block might be implied by how the old block is finished |
-data BlockStartMark = HeadingStart | EmptyLineFull | EOFEnd | ListItemStart Int | ParagraphStart | UnknownStart deriving stock (Eq, Show, Generic, Typeable)
+data BlockStartMark = HeadingStart | EmptyLineFull | EOFEnd | ListItemStart Indent | ParagraphStart Indent | UnknownStart deriving stock (Eq, Show, Generic, Typeable)
 
 -- | We can certainly know a new block has started by
 --    - End of file
@@ -54,7 +63,7 @@ blockStart =
       [ MP.eof $> EOFEnd,
         MC.char '*' $> HeadingStart,
         skipEmptyLine $> EmptyLineFull,
-        (ListItemStart . length . take 100 <$> MP.many MC.hspace)
+        (ListItemStart . Indent . length . take 100 <$> MP.many MC.hspace)
           <* MP.choice
             [ MC.char '-',
               MC.char '+',
@@ -81,18 +90,26 @@ nextBlock :: BlockStartMark -> BlockPass0 BlockStartMark -> BParser (a -> OrgDoc
 nextBlock EOFEnd pos = _unknownHelper $ return $ const $ OrgDocEOFF (blockPassConvert Proxy pos)
 nextBlock EmptyLineFull pos = _unknownHelper $ return $ OrgDocEmptyLineF (blockPassConvert Proxy pos)
 nextBlock HeadingStart pos = _unknownHelper $ OrgDocHeadingF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.getSourcePos)
-nextBlock (ListItemStart x) pos = _unknownHelper $ OrgDocListItemF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.many (MP.try $ _list x) *> MP.getSourcePos)
+nextBlock (ListItemStart x) pos = _unknownHelper $ do
+  skipToEndOfLine
+  MP.skipMany (MP.try  _list)
+  OrgDocListItemF . BlockPass0 (posStart pos)  <$> MP.getSourcePos
   where
-    _list x = MP.skipCount x MC.hspace *> MC.hspace1 *> notListStart *> skipToEndOfLine
+    _list = MP.skipCount (unIndent x) MC.hspace *> MC.hspace1 *> notListStart *> skipToEndOfLine
     notListStart = MP.notFollowedBy $ MP.eitherP (MP.some MC.numberChar <* MC.char '.') (MC.char '-')
-nextBlock ParagraphStart pos = do
-  (x, y, z) <- _innerParagraph skipToEndOfLine blockStart
-  return (OrgDocParagraphF x, y, z)
+nextBlock (ParagraphStart x) _ = do
+  (a, y, z) <- _innerParagraph (MP.skipCount (unIndent x) MC.hspace *> MP.notFollowedBy MC.space *> skipToEndOfLine) blockStart
+  return (OrgDocParagraphF a, y, z)
 nextBlock UnknownStart pos = do
   start <- MP.optional blockStart
   case start of
     Just (x, y) -> nextBlock x y
-    Nothing -> nextBlock ParagraphStart pos
+    Nothing -> do
+      x <- _takeIndent
+      nextBlock (ParagraphStart x) pos
+
+_takeIndent :: BParser Indent
+_takeIndent = Indent . length . take 100 <$> MP.many MC.hspace
 
 -- | Parse parargrph helper function |
 _innerParagraph :: BParser x -> BParser (end, BlockPass0 end) -> BParser (BlockPass0 (ParagraphF BlockPass0), end, BlockPass0 end)
