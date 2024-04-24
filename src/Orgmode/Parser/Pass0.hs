@@ -1,13 +1,16 @@
-module Orgmode.Parser.Pass0 (BlockPass0 (..), documentParse) where
+module Orgmode.Parser.Pass0 (BlockPass0 (..), nextBlock) where
 
 import Data.Functor.Classes (Eq1 (..))
-import Orgmode.Parser.Internal
-import Orgmode.Internal.Types
+import qualified Data.Aeson as Aeson
+import Data.Aeson ((.=), ToJSON)
 import Text.Megaparsec qualified as MP
 import Text.Megaparsec.Char qualified as MC
-import qualified Text.Megaparsec as MC
-import qualified Text.Megaparsec.Byte as MP
-import Data.Char (isLetter)
+import Orgmode.Parser.Internal
+    ( skipEmptyLine, skipToEndOfLine, BParser )
+import Orgmode.Internal.Types
+    ( BlockName(..),
+      OrgDocumentF(..),
+      ParagraphF(..) )
 
 {- BlockPass0 only keep the position infomation of blocks -}
 data BlockPass0 a = BlockPass0
@@ -15,6 +18,13 @@ data BlockPass0 a = BlockPass0
     posEnd :: !MP.SourcePos
   }
   deriving stock (Eq, Show, Generic, Typeable)
+
+instance (BlockName a) => ToJSON (BlockPass0 a) where
+  toJSON x = Aeson.object [
+    "posStart" .= posStart x,
+    "posEnd" .= posEnd x,
+    "blockName" .= blockName (Proxy :: Proxy a)
+                          ]
 
 {- Convert BlockPass0 -}
 blockPassConvert :: Proxy y -> BlockPass0 a -> BlockPass0 y
@@ -38,8 +48,8 @@ blockStart =
     MP.choice
       [ MP.eof $> EOFEnd,
         MC.char '*' $> HeadingStart,
-        skipEmptyLine $> EmptyLineFull
-        MP.manyTill MC.hspace (MP.eitherP (MP.some MC.numberChar <* MC.char '.') (MC.char '-')) <$> length
+        skipEmptyLine $> EmptyLineFull,
+        (ListItemStart . length <$> MP.many MC.hspace) <* MP.eitherP (MP.skipSome MC.numberChar <* MC.char '.') (MC.char '-')
       ]
   where
     _wrap x = do
@@ -52,7 +62,7 @@ _unknownHelper :: BParser x -> BParser (x, BlockStartMark, BlockPass0 BlockStart
 _unknownHelper py = do
   y <- py
   pos <- MP.getSourcePos
-  return (y, BlockPass0 pos, pos, UnknownStart)
+  return (y, UnknownStart, BlockPass0 pos pos)
 
 {-| Given a block token is already parsed, we can parse the following blocks |-}
 nextBlock :: BlockStartMark -> BlockPass0 BlockStartMark -> BParser (a -> OrgDocumentF BlockPass0 a, BlockStartMark, BlockPass0 BlockStartMark)
@@ -60,11 +70,11 @@ nextBlock EOFEnd pos = _unknownHelper$ return $ const $ OrgDocEOFF (blockPassCon
 nextBlock EmptyLineFull pos  = _unknownHelper$ return  $ OrgDocEmptyLineF (blockPassConvert Proxy pos)
 nextBlock HeadingStart pos  = _unknownHelper $  OrgDocHeadingF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.getSourcePos)
 nextBlock (ListItemStart x) pos = _unknownHelper $ OrgDocListItemF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.many (MP.try $ _list x) *> MP.getSourcePos) where
-  _list x = MP.skipCount x MP.hspace *> MP.hspace1 *> notListStart *> skipToEndOfLine
-  notListStart = MP.notFollowedBy $ MP.eitherP (MP.some MC.numberChar <* MC.char '.') (MP.char '-')
+  _list x = MP.skipCount x MC.hspace *> MC.hspace1 *> notListStart *> skipToEndOfLine
+  notListStart = MP.notFollowedBy $ MP.eitherP (MP.some MC.numberChar <* MC.char '.') (MC.char '-')
 nextBlock ParagraphStart pos = do
   (x,y,z) <- _innerParagraph skipToEndOfLine blockStart
-  return (ParagraphF x, y, z)
+  return (OrgDocParagraphF x, y, z)
 nextBlock UnknownStart pos = do
   start <- MP.optional blockStart
   case start of
