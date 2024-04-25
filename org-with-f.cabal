@@ -98,6 +98,7 @@ test-suite test-parse
   hs-source-dirs: test/
   build-depends:
     , aeson
+    , aeson-pretty
     , base          >=4     && <5
     , data-fix      >=0.3.0 && <0.4
     , filepath
