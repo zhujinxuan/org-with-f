@@ -22,10 +22,10 @@ data ListItemF f = ListItemF
   deriving stock (Eq, Show, Typeable, Generic)
 
 data HeadingF (f :: Type -> Type) = HeadingF
-  { level :: f Int,
-    keyword :: f (Maybe Text),
-    text :: f Text,
-    tags :: [f Text]
+  { level :: f Int
+  , keyword :: f (Maybe Text)
+  , text :: f Text
+  , tags :: [f Text]
   }
   deriving stock (Typeable, Generic)
 

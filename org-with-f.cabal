@@ -74,35 +74,37 @@ common shared
     TypeOperators
     ViewPatterns
 
-
 library
-  import:  shared
+  import:           shared
   exposed-modules:
     Orgmode.Internal.Types
-    Orgmode.Parser.Pass0
     Orgmode.Parser.Internal
-  hs-source-dirs: src
+    Orgmode.Parser.Pass0
+
+  hs-source-dirs:   src
   build-depends:
     , aeson
-    , base          >=4   && <5
-    , relude        >=1.0
+    , base        >=4     && <5
+    , data-fix    >=0.3.0 && <0.4
     , megaparsec
-    , data-fix >=0.3.0 && <0.4
-  default-language:   Haskell2010
+    , relude      >=1.0
+
+  default-language: Haskell2010
 
 test-suite test-parse
-  import:  shared
-  type: exitcode-stdio-1.0
-  main-is: Main.hs
+  import:         shared
+  type:           exitcode-stdio-1.0
+  main-is:        Main.hs
   hs-source-dirs: test/
   build-depends:
+    , aeson
+    , base          >=4     && <5
+    , data-fix      >=0.3.0 && <0.4
+    , filepath
+    , megaparsec
+    , org-with-f
+    , relude        >=1.0
     , tasty
     , tasty-golden
-    , aeson
-    , base          >=4   && <5
-    , relude        >=1.0
-    , megaparsec
-    , data-fix >=0.3.0 && <0.4
-    , filepath
-    , org-with-f
-  ghc-options: -threaded -Wall
+
+  ghc-options:    -threaded -Wall

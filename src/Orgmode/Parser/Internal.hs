@@ -1,14 +1,14 @@
 {-# LANGUAGE StrictData #-}
 
-module Orgmode.Parser.Internal
-  ( BParser,
-    OrgConfig (..),
-    OrgErr (..),
-    skipEmptyLine,
-    skipToEndOfLine,
-    skipIndent,
-    parseIndent,
-  )
+module Orgmode.Parser.Internal (
+  BParser,
+  OrgConfig (..),
+  OrgErr (..),
+  skipEmptyLine,
+  skipToEndOfLine,
+  skipIndent,
+  parseIndent,
+)
 where
 
 import Data.Char (isSpace)
@@ -19,8 +19,8 @@ import Text.Megaparsec.Char.Lexer (charLiteral)
 type BParser a = MP.ParsecT OrgErr Text (Reader OrgConfig) a
 
 data OrgConfig = OrgConfig
-  { orgTodoKeywords1 :: [Text],
-    orgElements :: [Text]
+  { orgTodoKeywords1 :: [Text]
+  , orgElements :: [Text]
   }
   deriving stock (Eq, Show, Generic, Typeable)
 
@@ -31,7 +31,6 @@ skipEmptyLine = MC.hspace *> MP.eitherP MC.eol MP.eof $> ()
 
 skipToEndOfLine :: BParser ()
 skipToEndOfLine = MP.manyTill charLiteral (MP.eitherP MC.eol MP.eof) $> ()
-
 
 -- | Is it a horizontal space character?
 isHSpace :: Char -> Bool
