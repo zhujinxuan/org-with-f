@@ -44,8 +44,8 @@ skipToEndOfLine = MP.manyTill charLiteral (MP.eitherP MC.eol MP.eof) $> ()
 isHSpace :: Char -> Bool
 isHSpace x = isSpace x && x /= '\n' && x /= '\r'
 
-skipIndent :: MP.Pos -> BParser ()
-skipIndent x = MP.skipCount (MP.unPos x) (MP.satisfy isHSpace) *> MP.notFollowedBy MC.space1
+skipIndent :: Int -> BParser ()
+skipIndent x = MP.skipCount x (MP.satisfy isHSpace) *> MP.notFollowedBy MC.space1
 
-parseIndent :: BParser MP.Pos
-parseIndent = MP.mkPos . length . take 100 <$> MP.many (MP.satisfy isHSpace)
+parseIndent :: BParser Int
+parseIndent =  length . take 100 <$> MP.many (MP.satisfy isHSpace)

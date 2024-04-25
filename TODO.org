@@ -1,3 +1,5 @@
 #+title: Todo
 
-* TODO BlockPass0 test on text
+* DONE BlockPass0 test on text
+* TODO indentGuard
+* TODO getOffset instead of pos

@@ -25,28 +25,15 @@ import Orgmode.Parser.Internal (
 import Text.Megaparsec qualified as MP
 import Text.Megaparsec.Char qualified as MC
 import Text.Megaparsec.Char.Lexer qualified as Lexer
+import qualified Text.Megaparsec.Byte as MP
 
 {- BlockPass0 only keep the position infomation of blocks -}
 data BlockPass0 a = BlockPass0
-  { posStart :: MP.SourcePos
-  , posEnd :: MP.SourcePos
+  { posStart :: Int
+  , posEnd :: Int
   }
   deriving stock (Eq, Show, Generic, Typeable)
 
-instance (BlockName a) => ToJSON (BlockPass0 a) where
-  toJSON x =
-    Aeson.object
-      [ "posStart" .= _posObject (posStart x)
-      , "posEnd" .= _posObject (posEnd x)
-      , "blockName" .= blockName (Proxy :: Proxy a)
-      ]
-
-_posObject :: MP.SourcePos -> Aeson.Value
-_posObject x =
-  Aeson.object
-    [ "line" .= MP.unPos (MP.sourceLine x)
-    , "column" .= MP.unPos (MP.sourceColumn x)
-    ]
 
 {- Convert BlockPass0 -}
 blockPassConvert :: Proxy y -> BlockPass0 a -> BlockPass0 y
@@ -62,8 +49,8 @@ data BlockStartMark
   = HeadingStart
   | EmptyLineFull
   | EOFEnd
-  | ListItemStart MP.Pos
-  | ParagraphStart MP.Pos
+  | ListItemStart Int
+  | ParagraphStart Int
   deriving stock (Eq, Show, Generic, Typeable)
 
 {- | We can certainly know a new block has started by
@@ -84,9 +71,9 @@ blockStart =
       ]
   where
     _wrap x = do
-      st <- MP.getSourcePos
+      st <- MP.getOffset
       v <- x
-      ed <- MP.getSourcePos
+      ed <- MP.getOffset
       return (v, BlockPass0 st ed)
 
 -- | Start of List after indent
@@ -100,26 +87,24 @@ _listStart =
     , MP.skipSome MC.digitChar *> MC.char '.'
     ]
 
--- TODO lookAhead $ Take indent *> indentGuard
-
 -- | Given a block token is already parsed, we can parse the following blocks
 _nextBlock :: BlockStartMark -> BlockPass0 BlockStartMark -> BParser (a -> OrgDocumentF BlockPass0 a)
 _nextBlock EOFEnd pos = return $ const $ OrgDocEOFF (blockPassConvert Proxy pos)
 _nextBlock EmptyLineFull pos = return $ OrgDocEmptyLineF (blockPassConvert Proxy pos)
-_nextBlock HeadingStart pos = OrgDocHeadingF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.getSourcePos)
+_nextBlock HeadingStart pos = OrgDocHeadingF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.getOffset)
 _nextBlock (ListItemStart _) pos =
   OrgDocListItemF . BlockPass0 (posStart pos) <$> do
     ind <- MC.hspace *> Lexer.indentLevel
     skipToEndOfLine
     MP.skipMany (MP.try $ _list ind)
-    MP.getSourcePos
+    MP.getOffset
   where
     _list ind = skipIndent ind *> MC.hspace1 *> MP.notFollowedBy _listStart *> skipToEndOfLine
 _nextBlock (ParagraphStart x) pos =
   OrgDocParagraphF <$> do
     skipToEndOfLine
     MP.skipManyTill line newBlock
-    BlockPass0 (posStart pos) <$> MP.getSourcePos
+    BlockPass0 (posStart pos) <$> MP.getOffset
   where
     line = skipIndent x *> MP.notFollowedBy MC.space *> skipToEndOfLine
     newBlock =
@@ -136,7 +121,7 @@ nextBlock = do
     Just (x, y) -> _nextBlock x y
     Nothing -> do
       x <- _takeIndent
-      p <- MP.getSourcePos
+      p <- MP.getOffset
       _nextBlock (ParagraphStart x) $ BlockPass0 p p
 
 -- | Parse the document
@@ -149,9 +134,12 @@ documentParse = do
 
 currentBlockPass0 :: BParser (BlockPass0 a)
 currentBlockPass0 = do
-  pos <- MP.getSourcePos
+  pos <- MP.getOffset
   return $ BlockPass0 pos pos
 
 -- | Consume indent
-_takeIndent :: BParser MP.Pos
-_takeIndent = MC.hspace *> Lexer.indentLevel
+_takeIndent :: BParser Int
+_takeIndent = do
+  i <- MP.getOffset
+  MC.hspace
+  (\x -> x - i) <$> MP.getOffset
