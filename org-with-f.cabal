@@ -103,5 +103,6 @@ test-suite test-parse
     , relude        >=1.0
     , megaparsec
     , data-fix >=0.3.0 && <0.4
+    , filepath
     , org-with-f
   ghc-options: -threaded -Wall

@@ -1,6 +1,8 @@
+module Main (main) where
+
 import Test.Tasty (defaultMain, TestTree, testGroup)
 import Test.Tasty.Golden (goldenVsString, findByExtension)
-import Data.Text.Lazy.IO (readFile)
+import Data.Text.IO (readFile)
 import System.FilePath (replaceExtension)
 
 
@@ -9,12 +11,12 @@ main = defaultMain =<< goldenTests
 
 goldenTests :: IO TestTree
 goldenTests = do
-  orgFiles <- findByExtension [".org"] "./test/golden-/"
+  orgFiles <- findByExtension [".org"] "./test/golden-orgs/"
   return $ testGroup "Pass0 Golden tests"
     [ goldenVsString
         orgFile -- test name
         jsonFile -- golden file path
-        (yamlToJson <$> LBS.readFile yamlFile) -- action whose result is tested
+        (parseToJSON <$>  readFile orgFile) -- action whose result is tested
     | orgFile <- orgFiles
-    , let jsonFile = replaceExtension yamlFile ".json"
+    , let jsonFile = replaceExtension yamlFile "pass0.json"
     ]
