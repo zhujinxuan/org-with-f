@@ -1,14 +1,15 @@
 {-# LANGUAGE StrictData #-}
 
-module Orgmode.Parser.Internal (
-  BParser,
-  OrgConfig (..),
-  OrgErr (..),
-  skipEmptyLine,
-  skipToEndOfLine,
-  skipIndent,
-  parseIndent,
-)
+module Orgmode.Parser.Internal
+  ( BParser,
+    OrgConfig (..),
+    OrgErr (..),
+    skipEmptyLine,
+    skipToEndOfLine,
+    skipIndent,
+    parseIndent,
+    defaultOrgConfig,
+  )
 where
 
 import Data.Char (isSpace)
@@ -19,10 +20,17 @@ import Text.Megaparsec.Char.Lexer (charLiteral)
 type BParser a = MP.ParsecT OrgErr Text (Reader OrgConfig) a
 
 data OrgConfig = OrgConfig
-  { orgTodoKeywords1 :: [Text]
-  , orgElements :: [Text]
+  { orgTodoKeywords1 :: [Text],
+    orgElements :: [Text]
   }
   deriving stock (Eq, Show, Generic, Typeable)
+
+defaultOrgConfig :: OrgConfig
+defaultOrgConfig =
+  OrgConfig
+    { orgTodoKeywords1 = [],
+      orgElements = []
+    }
 
 data OrgErr = OrgErr deriving stock (Eq, Ord, Show, Generic, Typeable)
 

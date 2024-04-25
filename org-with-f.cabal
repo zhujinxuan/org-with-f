@@ -99,6 +99,7 @@ test-suite test-parse
   build-depends:
     , aeson
     , aeson-pretty
+    , vector
     , base          >=4     && <5
     , data-fix      >=0.3.0 && <0.4
     , filepath
