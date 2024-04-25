@@ -2,3 +2,5 @@ cradle:
   cabal:
     - path: "src"
       component: "lib:org-with-f"
+    - path: "test"
+      component: "org-with-f:test:test-parse"

@@ -3,6 +3,7 @@
 module Orgmode.Parser.Pass0
   ( BlockPass0 (..),
     nextBlock,
+    documentParse,
   )
 where
 
@@ -12,7 +13,6 @@ import Data.Functor.Classes (Eq1 (..))
 import Orgmode.Internal.Types
   ( BlockName (..),
     OrgDocumentF (..),
-    ParagraphF (..),
   )
 import Orgmode.Parser.Internal
   ( BParser,
@@ -23,7 +23,8 @@ import Orgmode.Parser.Internal
   )
 import Text.Megaparsec qualified as MP
 import Text.Megaparsec.Char qualified as MC
-import qualified Text.Megaparsec.Char.Lexer as Lexer
+import Text.Megaparsec.Char.Lexer qualified as Lexer
+import Data.Fix (Fix(..))
 
 {- BlockPass0 only keep the position infomation of blocks -}
 data BlockPass0 a = BlockPass0
@@ -62,7 +63,6 @@ data BlockStartMark
   | EOFEnd
   | ListItemStart MP.Pos
   | ParagraphStart MP.Pos
-  | UnknownStart
   deriving stock (Eq, Show, Generic, Typeable)
 
 -- | We can certainly know a new block has started by
@@ -87,12 +87,6 @@ blockStart =
       ed <- MP.getSourcePos
       return (v, BlockPass0 st ed)
 
-_unknownHelper :: BParser x -> BParser (x, BlockStartMark, BlockPass0 BlockStartMark)
-_unknownHelper py = do
-  y <- py
-  pos <- MP.getSourcePos
-  return (y, UnknownStart, BlockPass0 pos pos)
-
 -- | Start of List after indent
 _listStart :: BParser Char
 _listStart =
@@ -104,35 +98,58 @@ _listStart =
       MP.skipSome MC.digitChar *> MC.char '.'
     ]
 
+-- TODO lookAhead $ Take indent *> indentGuard
 -- | Given a block token is already parsed, we can parse the following blocks
-nextBlock :: BlockStartMark -> BlockPass0 BlockStartMark -> BParser (a -> OrgDocumentF BlockPass0 a, BlockStartMark, BlockPass0 BlockStartMark)
-nextBlock EOFEnd pos = _unknownHelper $ return $ const $ OrgDocEOFF (blockPassConvert Proxy pos)
-nextBlock EmptyLineFull pos = _unknownHelper $ return $ OrgDocEmptyLineF (blockPassConvert Proxy pos)
-nextBlock HeadingStart pos = _unknownHelper $ OrgDocHeadingF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.getSourcePos)
-nextBlock (ListItemStart x) pos = _unknownHelper $ do
+_nextBlock :: BlockStartMark -> BlockPass0 BlockStartMark -> BParser (a -> OrgDocumentF BlockPass0 a)
+_nextBlock EOFEnd pos = return $ const $ OrgDocEOFF (blockPassConvert Proxy pos)
+_nextBlock EmptyLineFull pos = return $ OrgDocEmptyLineF (blockPassConvert Proxy pos)
+_nextBlock HeadingStart pos = OrgDocHeadingF . BlockPass0 (posStart pos) <$> (skipToEndOfLine *> MP.getSourcePos)
+_nextBlock (ListItemStart _) pos = OrgDocListItemF . BlockPass0 (posStart pos) <$> do
+  ind <- MC.hspace *> Lexer.indentLevel
   skipToEndOfLine
-  MP.skipMany (MP.try _list)
-  OrgDocListItemF . BlockPass0 (posStart pos) <$> MP.getSourcePos
+  MP.skipMany (MP.try $ _list ind)
+  MP.getSourcePos
   where
-    _list = skipIndent x *> MC.hspace1 *> MP.notFollowedBy _listStart *> skipToEndOfLine
-nextBlock (ParagraphStart x) _ = do
-  (a, y, z) <- _innerParagraph (skipIndent x *> MP.notFollowedBy MC.space *> skipToEndOfLine) blockStart
-  return (OrgDocParagraphF a, y, z)
-nextBlock UnknownStart pos = do
+    _list ind= skipIndent ind *> MC.hspace1 *> MP.notFollowedBy _listStart *> skipToEndOfLine
+_nextBlock (ParagraphStart x) pos =
+  OrgDocParagraphF <$> do
+    skipToEndOfLine
+    MP.skipManyTill line newBlock
+    BlockPass0 (posStart pos) <$> MP.getSourcePos
+  where
+    line = skipIndent x *> MP.notFollowedBy MC.space *> skipToEndOfLine
+    newBlock =
+      MP.lookAhead $
+        MP.choice
+          [ blockStart $> (),
+            skipIndent x *> MC.space1
+          ]
+
+nextBlock :: BParser (a -> OrgDocumentF BlockPass0 a)
+nextBlock = do
   start <- MP.optional blockStart
   case start of
-    Just (x, y) -> nextBlock x y
+    Just (x, y) -> _nextBlock x y
     Nothing -> do
       x <- _takeIndent
-      nextBlock (ParagraphStart x) pos
+      p <- MP.getSourcePos
+      _nextBlock (ParagraphStart x) $ BlockPass0 p p
+
+-- | Parse the document
+documentParse :: BParser (Fix (OrgDocumentF BlockPass0))
+documentParse = do
+  block <- MP.eitherP nextBlock MP.eof
+  case block of
+    Right _ -> Fix . OrgDocEOFF <$> currentBlockPass0
+    Left nextB -> Fix . nextB <$> documentParse
+
+
+currentBlockPass0 :: BParser (BlockPass0 a)
+currentBlockPass0 = do
+  pos <- MP.getSourcePos
+  return $ BlockPass0 pos pos
+
 
 -- | Consume indent
 _takeIndent :: BParser MP.Pos
 _takeIndent = MC.hspace *> Lexer.indentLevel
-
--- | Parse parargrph helper function |
-_innerParagraph :: BParser x -> BParser (end, BlockPass0 end) -> BParser (BlockPass0 (ParagraphF BlockPass0), end, BlockPass0 end)
-_innerParagraph line end = do
-  start <- MP.getSourcePos
-  (endValue, endBlock) <- MP.skipManyTill line end
-  return (BlockPass0 start $ posStart endBlock, endValue, endBlock)
